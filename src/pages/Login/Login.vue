@@ -39,7 +39,7 @@
               </section>
               <section class="login_message">
                 <input type="text" maxlength="11" placeholder="验证码" v-model="captcha" >
-                <img class="get_verification" src="images/captcha.svg" alt="captcha">
+                <img class="get_verification" src="http://localhost:4000/captcha" alt="captcha" @click="getCaptcha" ref="captcha">
               </section>
             </section>
           </div>
@@ -55,6 +55,7 @@
   </section>
 </template>
 <script>
+import {reqPwdLogin, reqSendCode, reqSmsLogin} from '../../api'
 import AlertTip from '../../components/AlertTip/AlertTip'
 export default {
   components: {AlertTip},
@@ -79,25 +80,40 @@ export default {
 
   },
   methods:{
-    get_code(){
-      if(this.time===0)
-      {
-        this.time = 30
-        const interval = setInterval(()=>{
-          this.time--
-          if(this.time<0){
-
-            clearInterval(interval)
-            this.time = 0
-          }
-        },1000)
-      }
-    },
     showAlert(text){
       this.alertText = text
       this.show_Alert = true
     },
-    login(){
+    async get_code(){
+      if(this.time===0)
+      {
+        this.time = 30
+        this.intervalId = setInterval(()=>{
+          this.time--
+          if(this.time<0){
+
+            clearInterval(this.intervalId)
+            this.time = 0
+          }
+        },1000)
+      }
+
+      // 发送 ajax 请求 ( 请求后台向指定手机号发验证码短信 )
+      // 发送短信验证码
+      let result = await reqSendCode(this.phone)
+      if (result.code!==0) {
+      // 显示提示框
+        this.showAlert(result.msg)
+      // 停止倒计时
+        if(this.time) {
+          this.time = 0
+          clearInterval(this.intervalId)
+        }
+      }
+    },
+
+    async login(){
+      let result
       if(this.login_way){
         const {right_phone,phone,code} = this
         if(!this.right_phone){
@@ -108,6 +124,7 @@ export default {
           //验证码不正确  /^\d{6}$/.test(code)
           this.showAlert('验证码不正确')
         }
+        result = await reqSmsLogin(phone,code)
 
       }else {
         const {pwd,name,captcha} = this
@@ -121,12 +138,31 @@ export default {
           // 验证码指定
           this.showAlert('验证码指定')
         }
+        result = await reqPwdLogin({name,pwd,captcha})
       }
+      if(this.time) {
+        this.time = 0
+        clearInterval(this.intervalId)
+      }
+      if(result.code===0){
+        const user = result.data
+        await this.$store.dispatch('recordUser', user)
+        await this.$router.replace('/profile')
+      }else{
+        const msg =  result.msg
+        this.showAlert(msg)
+        this.getCaptcha()
+      }
+
+
 
     },
     closeTip(){
       this.alertText = ''
       this.show_Alert=false
+    },
+    getCaptcha(){
+      this.$refs.captcha.src = 'http://localhost:4000/captcha?time='+Date.now()
     }
 
   }
